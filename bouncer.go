@@ -7,17 +7,17 @@ import (
 
 	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
-	. "github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
-	"github.com/l3montree-dev/traefik-crowdsec-bouncer/controler"
+	"github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
+	"github.com/l3montree-dev/traefik-crowdsec-bouncer/controller"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-var logLevel = OptionalEnv("CROWDSEC_BOUNCER_LOG_LEVEL", "1")
-var trustedProxiesList = strings.Split(OptionalEnv("TRUSTED_PROXIES", "0.0.0.0/0"), ",")
+var logLevel = config.OptionalEnv("CROWDSEC_BOUNCER_LOG_LEVEL", "1")
+var trustedProxiesList = strings.Split(config.OptionalEnv("TRUSTED_PROXIES", "0.0.0.0/0"), ",")
 
 func main() {
-	ValidateEnv()
+	config.ValidateEnv()
 	router, err := setupRouter()
 	if err != nil {
 		log.Fatal().Err(err).Msgf("An error occurred while starting webserver")
@@ -59,9 +59,9 @@ func setupRouter() (*gin.Engine, error) {
 	router.Use(logger.SetLogger(
 		logger.WithSkipPath([]string{"/api/v1/ping", "/api/v1/healthz"}),
 	))
-	router.GET("/api/v1/ping", controler.Ping)
-	router.GET("/api/v1/healthz", controler.Healthz)
-	router.GET("/api/v1/forwardAuth", controler.ForwardAuth)
-	router.GET("/api/v1/metrics", controler.Metrics)
+	router.GET("/api/v1/ping", controller.Ping)
+	router.GET("/api/v1/healthz", controller.Healthz)
+	router.GET("/api/v1/forwardAuth", controller.ForwardAuth)
+	router.GET("/api/v1/metrics", controller.Metrics)
 	return router, nil
 }
