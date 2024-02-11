@@ -14,7 +14,6 @@ RUN go get -d -v ./...
 RUN go build -o /go/bin/app
 
 FROM gcr.io/distroless/base:nonroot
-COPY --from=health-build-env --chown=nonroot:nonroot /go/bin/healthchecker /
 COPY --from=build-env --chown=nonroot:nonroot /go/bin/app /
 
 # Run as a non root user.
