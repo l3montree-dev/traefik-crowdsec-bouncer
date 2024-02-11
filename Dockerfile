@@ -1,5 +1,5 @@
 # 1.17-alpine bug : standard_init_linux.go:228: exec user process caused: no such file or directory
-ARG GOLANG_VERSION=1.17
+ARG GOLANG_VERSION=1.22
 
 # Building custom health checker
 FROM golang:$GOLANG_VERSION as health-build-env
@@ -33,10 +33,6 @@ COPY --from=build-env --chown=nonroot:nonroot /go/bin/app /
 
 # Run as a non root user.
 USER nonroot
-
-# Using custom health checker
-HEALTHCHECK --interval=10s --timeout=5s --retries=2\
-  CMD ["/healthchecker"]
 
 # Run app
 CMD ["/app"]
