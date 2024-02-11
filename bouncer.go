@@ -4,17 +4,12 @@ import (
 	"net/http"
 	"os"
 
-	"strings"
-
 	"log/slog"
 
 	"github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
 	"github.com/l3montree-dev/traefik-crowdsec-bouncer/controller"
 	"github.com/lmittmann/tint"
 )
-
-var logLevel = config.OptionalEnv("CROWDSEC_BOUNCER_LOG_LEVEL", "1")
-var trustedProxiesList = strings.Split(config.OptionalEnv("TRUSTED_PROXIES", "0.0.0.0/0"), ",")
 
 func getLogLevel() slog.Level {
 	envVar := os.Getenv("LOG_LEVEL")

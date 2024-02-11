@@ -247,10 +247,10 @@ func ForwardAuth(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("an error occured while checking IP", "err", err, "ip", clientIP)
 		w.WriteHeader(crowdsecBanResponseCode)
-		w.Write([]byte(crowdsecBanResponseMsg))
+		w.Write([]byte(crowdsecBanResponseMsg)) // nolint
 	} else if !isAuthorized {
 		w.WriteHeader(crowdsecBanResponseCode)
-		w.Write([]byte(crowdsecBanResponseMsg))
+		w.Write([]byte(crowdsecBanResponseMsg)) // nolint
 
 	} else {
 		w.WriteHeader(http.StatusOK)
@@ -274,7 +274,7 @@ func Healthz(w http.ResponseWriter, r *http.Request) {
 Simple route responding pong to every request. Mainly use for Kubernetes liveliness probe
 */
 func Ping(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("pong"))
+	w.Write([]byte("pong")) // nolint
 }
 
 func Metrics(w http.ResponseWriter, r *http.Request) {
