@@ -62,7 +62,10 @@ type blocklist struct {
 	rwMutex sync.RWMutex
 }
 
-var globalBlocklist blocklist = blocklist{}
+var globalBlocklist blocklist = blocklist{
+	list:    make(map[string]struct{}),
+	rwMutex: sync.RWMutex{},
+}
 
 // will be nil if unparsable
 func getIpFromDecision(d model.Decision) net.IP {
@@ -136,7 +139,7 @@ func StartStreaming() {
 				slog.Error("could not start streaming", "err", err)
 				panic("")
 			}
-
+			req.Header.Add(crowdsecAuthHeader, crowdsecBouncerApiKey)
 			resp, err := client.Do(req)
 			if err != nil {
 				slog.Error("could not fetch initial streaming state", "err", err)
