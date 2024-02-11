@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"log/slog"
 	"os"
 	"strconv"
 
@@ -69,6 +70,6 @@ func ValidateEnv() {
 func init() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("could not load .env")
+		slog.Warn("could not load .env")
 	}
 }
