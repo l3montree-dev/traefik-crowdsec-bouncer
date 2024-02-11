@@ -3,13 +3,14 @@ package main
 import (
 	"os"
 
-	. "github.com/fbonalair/traefik-crowdsec-bouncer/config"
-	"github.com/fbonalair/traefik-crowdsec-bouncer/controler"
+	"strings"
+
 	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
+	. "github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
+	"github.com/l3montree-dev/traefik-crowdsec-bouncer/controler"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"strings"
 )
 
 var logLevel = OptionalEnv("CROWDSEC_BOUNCER_LOG_LEVEL", "1")

@@ -1,8 +1,8 @@
 ![GitHub](https://img.shields.io/github/license/fbonalair/traefik-crowdsec-bouncer)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/fbonalair/traefik-crowdsec-bouncer)
-[![Go Report Card](https://goreportcard.com/badge/github.com/fbonalair/traefik-crowdsec-bouncer)](https://goreportcard.com/report/github.com/fbonalair/traefik-crowdsec-bouncer)
+[![Go Report Card](https://goreportcard.com/badge/github.com/l3montree-dev/traefik-crowdsec-bouncer)](https://goreportcard.com/report/github.com/l3montree-dev/traefik-crowdsec-bouncer)
 [![Maintainability](https://api.codeclimate.com/v1/badges/7177dce30f0abdf8bcbf/maintainability)](https://codeclimate.com/github/fbonalair/traefik-crowdsec-bouncer/maintainability)
-[![ci](https://github.com/fbonalair/traefik-crowdsec-bouncer/actions/workflows/main.yml/badge.svg)](https://github.com/fbonalair/traefik-crowdsec-bouncer/actions/workflows/main.yml)
+[![ci](https://github.com/l3montree-dev/traefik-crowdsec-bouncer/actions/workflows/main.yml/badge.svg)](https://github.com/l3montree-dev/traefik-crowdsec-bouncer/actions/workflows/main.yml)
 ![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/fbonalair/traefik-crowdsec-bouncer)
 ![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/fbonalair/traefik-crowdsec-bouncer)
 
@@ -21,7 +21,7 @@ You can use the docker-compose in the examples' folder as a starting point.
 Through traefik it exposes the whoami countainer on port 80, with the bouncer accepting and rejecting client IP.   
 Launch your all services except the bouncer with the follow commands:
 ```bash
-git clone https://github.com/fbonalair/traefik-crowdsec-bouncer.git && \
+git clone https://github.com/l3montree-dev/traefik-crowdsec-bouncer.git && \
   cd traefik-crowdsec-bouncer/examples && \
   docker-compose up -d traefik crowdsec whoami 
 ```

@@ -4,19 +4,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	. "github.com/fbonalair/traefik-crowdsec-bouncer/config"
-	"github.com/fbonalair/traefik-crowdsec-bouncer/model"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/gin-gonic/gin"
+	. "github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
+	"github.com/l3montree-dev/traefik-crowdsec-bouncer/model"
 	"github.com/rs/zerolog/log"
 )
 
@@ -48,7 +48,8 @@ var client = &http.Client{
 	Timeout: 5 * time.Second,
 }
 
-/**
+/*
+*
 Call Crowdsec local IP and with realIP and return true if IP does NOT have a ban decisions.
 */
 func isIpAuthorized(clientIP string) (bool, error) {
@@ -85,7 +86,7 @@ func isIpAuthorized(clientIP string) (bool, error) {
 			log.Err(err).Msg("An error occurred while closing body reader")
 		}
 	}(resp.Body)
-	reqBody, err := ioutil.ReadAll(resp.Body)
+	reqBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, err
 	}
@@ -102,11 +103,11 @@ func isIpAuthorized(clientIP string) (bool, error) {
 	}
 
 	// Authorization logic
-	return len(decisions) < 0, nil
+	return len(decisions) == 0, nil
 }
 
 /*
-	Main route used by Traefik to verify authorization for a request
+Main route used by Traefik to verify authorization for a request
 */
 func ForwardAuth(c *gin.Context) {
 	ipProcessed.Inc()
@@ -132,7 +133,7 @@ func ForwardAuth(c *gin.Context) {
 }
 
 /*
-	Route to check bouncer connectivity with Crowdsec agent. Mainly use for Kubernetes readiness probe
+Route to check bouncer connectivity with Crowdsec agent. Mainly use for Kubernetes readiness probe
 */
 func Healthz(c *gin.Context) {
 	isHealthy, err := isIpAuthorized(healthCheckIp)
@@ -145,7 +146,7 @@ func Healthz(c *gin.Context) {
 }
 
 /*
-	Simple route responding pong to every request. Mainly use for Kubernetes liveliness probe
+Simple route responding pong to every request. Mainly use for Kubernetes liveliness probe
 */
 func Ping(c *gin.Context) {
 	c.String(http.StatusOK, "pong")

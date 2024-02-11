@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
-/**
-  Simple binary to query bouncer health check route and allow use of docker container health check
-  For more information, see issue https://github.com/fbonalair/traefik-crowdsec-bouncer/issues/6
+/*
+*
+
+	Simple binary to query bouncer health check route and allow use of docker container health check
+	For more information, see issue https://github.com/l3montree-dev/traefik-crowdsec-bouncer/issues/6
 */
 func main() {
 	port := os.Getenv("PORT")
