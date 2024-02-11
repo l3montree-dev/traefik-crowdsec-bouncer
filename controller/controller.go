@@ -2,20 +2,23 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/gin-gonic/gin"
-	. "github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
+	"github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
 	"github.com/l3montree-dev/traefik-crowdsec-bouncer/model"
 	"github.com/rs/zerolog/log"
 )
@@ -28,11 +31,11 @@ const (
 	healthCheckIp        = "127.0.0.1"
 )
 
-var crowdsecBouncerApiKey = RequiredEnv("CROWDSEC_BOUNCER_API_KEY")
-var crowdsecBouncerHost = RequiredEnv("CROWDSEC_AGENT_HOST")
-var crowdsecBouncerScheme = OptionalEnv("CROWDSEC_BOUNCER_SCHEME", "http")
-var crowdsecBanResponseCode, _ = strconv.Atoi(OptionalEnv("CROWDSEC_BOUNCER_BAN_RESPONSE_CODE", "403")) // Validated via ValidateEnv()
-var crowdsecBanResponseMsg = OptionalEnv("CROWDSEC_BOUNCER_BAN_RESPONSE_MSG", "Forbidden")
+var crowdsecBouncerApiKey = config.RequiredEnv("CROWDSEC_BOUNCER_API_KEY")
+var crowdsecBouncerHost = config.RequiredEnv("CROWDSEC_AGENT_HOST")
+var crowdsecBouncerScheme = config.OptionalEnv("CROWDSEC_BOUNCER_SCHEME", "http")
+var crowdsecBanResponseCode, _ = strconv.Atoi(config.OptionalEnv("CROWDSEC_BOUNCER_BAN_RESPONSE_CODE", "403")) // Validated via ValidateEnv()
+var crowdsecBanResponseMsg = config.OptionalEnv("CROWDSEC_BOUNCER_BAN_RESPONSE_MSG", "Forbidden")
 var (
 	ipProcessed = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "crowdsec_traefik_bouncer_processed_ip_total",
@@ -52,7 +55,7 @@ var client = &http.Client{
 *
 Call Crowdsec local IP and with realIP and return true if IP does NOT have a ban decisions.
 */
-func isIpAuthorized(clientIP string) (bool, error) {
+func isIpAuthorized(parentCTX context.Context, clientIP string) (bool, error) {
 	// Generating crowdsec API request
 	decisionUrl := url.URL{
 		Scheme:   crowdsecBouncerScheme,
@@ -60,15 +63,15 @@ func isIpAuthorized(clientIP string) (bool, error) {
 		Path:     crowdsecBouncerRoute,
 		RawQuery: fmt.Sprintf("type=ban&ip=%s", clientIP),
 	}
-	req, err := http.NewRequest(http.MethodGet, decisionUrl.String(), nil)
+	ctx, cancel := context.WithTimeout(parentCTX, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, decisionUrl.String(), nil)
 	if err != nil {
 		return false, err
 	}
 	req.Header.Add(crowdsecAuthHeader, crowdsecBouncerApiKey)
-	log.Debug().
-		Str("method", http.MethodGet).
-		Str("url", decisionUrl.String()).
-		Msg("Request Crowdsec's decision Local API")
+	slog.Debug("request crowdsecs decision local api", "url", decisionUrl.String())
 
 	// Calling crowdsec API
 	resp, err := client.Do(req)
@@ -78,81 +81,85 @@ func isIpAuthorized(clientIP string) (bool, error) {
 	if resp.StatusCode == http.StatusForbidden {
 		return false, err
 	}
-
-	// Parsing response
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			log.Err(err).Msg("An error occurred while closing body reader")
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 	reqBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, err
 	}
+
 	if bytes.Equal(reqBody, []byte("null")) {
-		log.Debug().Msgf("No decision for IP %q. Accepting", clientIP)
+		slog.Info("no decision for IP. Accepting", "ip", clientIP)
 		return true, nil
 	}
 
-	log.Debug().RawJSON("decisions", reqBody).Msg("Found Crowdsec's decision(s), evaluating ...")
+	slog.Debug("found Crowdsec's decision(s), evaluating ...")
 	var decisions []model.Decision
 	err = json.Unmarshal(reqBody, &decisions)
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, string(reqBody))
 	}
 
 	// Authorization logic
 	return len(decisions) == 0, nil
 }
 
+func readUserIP(r *http.Request) string {
+	IPAddress := r.Header.Get(realIpHeader)
+	if IPAddress == "" {
+		IPAddress = r.Header.Get(forwardHeader)
+	}
+	if IPAddress == "" {
+		IPAddress, _, _ = net.SplitHostPort(r.RemoteAddr)
+	}
+
+	return IPAddress
+}
+
 /*
 Main route used by Traefik to verify authorization for a request
 */
-func ForwardAuth(c *gin.Context) {
+func ForwardAuth(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	ipProcessed.Inc()
-	clientIP := c.ClientIP()
-
-	log.Debug().
-		Str("ClientIP", clientIP).
-		Str("RemoteAddr", c.Request.RemoteAddr).
-		Str(forwardHeader, c.Request.Header.Get(forwardHeader)).
-		Str(realIpHeader, c.Request.Header.Get(realIpHeader)).
-		Msg("Handling forwardAuth request")
-
+	clientIP := readUserIP(r)
+	slog.Debug("handling forwardAuth request", "ip", clientIP)
 	// Getting and verifying ip using ClientIP function
-	isAuthorized, err := isIpAuthorized(clientIP)
+	isAuthorized, err := isIpAuthorized(r.Context(), clientIP)
+	slog.Debug("handled request", "ip", clientIP, "isAuthorized", isAuthorized, "took", time.Since(start))
 	if err != nil {
-		log.Warn().Err(err).Msgf("An error occurred while checking IP %q", c.Request.Header.Get(clientIP))
-		c.String(crowdsecBanResponseCode, crowdsecBanResponseMsg)
+		slog.Warn("an error occured while checking IP", "err", err, "ip", clientIP)
+		w.WriteHeader(crowdsecBanResponseCode)
+		w.Write([]byte(crowdsecBanResponseMsg))
 	} else if !isAuthorized {
-		c.String(crowdsecBanResponseCode, crowdsecBanResponseMsg)
+		w.WriteHeader(crowdsecBanResponseCode)
+		w.Write([]byte(crowdsecBanResponseMsg))
+
 	} else {
-		c.Status(http.StatusOK)
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
 /*
 Route to check bouncer connectivity with Crowdsec agent. Mainly use for Kubernetes readiness probe
 */
-func Healthz(c *gin.Context) {
-	isHealthy, err := isIpAuthorized(healthCheckIp)
+func Healthz(w http.ResponseWriter, r *http.Request) {
+	isHealthy, err := isIpAuthorized(r.Context(), healthCheckIp)
 	if err != nil || !isHealthy {
 		log.Warn().Err(err).Msgf("The health check did not pass. Check error if present and if the IP %q is authorized", healthCheckIp)
-		c.Status(http.StatusForbidden)
+		w.WriteHeader(http.StatusForbidden)
 	} else {
-		c.Status(http.StatusOK)
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
 /*
 Simple route responding pong to every request. Mainly use for Kubernetes liveliness probe
 */
-func Ping(c *gin.Context) {
-	c.String(http.StatusOK, "pong")
+func Ping(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("pong"))
 }
 
-func Metrics(c *gin.Context) {
+func Metrics(w http.ResponseWriter, r *http.Request) {
 	handler := promhttp.Handler()
-	handler.ServeHTTP(c.Writer, c.Request)
+	handler.ServeHTTP(w, r)
 }
