@@ -11,11 +11,10 @@ COPY . /go/src/app
 RUN go get -d -v ./...
 
 # Compiling
-RUN go build -o /go/bin/app
+RUN go build -o -buildvcs=false /go/bin/app
 
 FROM gcr.io/distroless/base:nonroot
 COPY --from=build-env --chown=nonroot:nonroot /go/bin/app /
-
 # Run as a non root user.
 USER nonroot
 
