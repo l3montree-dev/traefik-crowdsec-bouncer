@@ -14,7 +14,7 @@ import (
 func getLogLevel() slog.Level {
 	envVar := os.Getenv("LOG_LEVEL")
 	if envVar == "" {
-		return slog.LevelDebug
+		return slog.LevelInfo
 	}
 	switch envVar {
 	case "DEBUG":
@@ -26,7 +26,7 @@ func getLogLevel() slog.Level {
 	case "ERROR":
 		return slog.LevelError
 	default:
-		return slog.LevelDebug
+		return slog.LevelInfo
 	}
 }
 func initLogger() {
