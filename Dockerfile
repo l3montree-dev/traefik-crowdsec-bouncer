@@ -11,7 +11,7 @@ COPY . /go/src/app
 RUN go get -d -v ./...
 
 # Compiling
-RUN go build -buildvcs=false -o /go/bin/app
+RUN CGO_ENABLED=0 go build -buildvcs=false -o /go/bin/app
 
 FROM gcr.io/distroless/base:nonroot
 COPY --from=build-env --chown=nonroot:nonroot /go/bin/app /
