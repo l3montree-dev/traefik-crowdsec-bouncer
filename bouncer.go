@@ -19,7 +19,7 @@ var trustedProxiesList = strings.Split(config.OptionalEnv("TRUSTED_PROXIES", "0.
 func getLogLevel() slog.Level {
 	envVar := os.Getenv("LOG_LEVEL")
 	if envVar == "" {
-		return slog.LevelInfo
+		return slog.LevelDebug
 	}
 	switch envVar {
 	case "DEBUG":
@@ -46,11 +46,13 @@ func initLogger() {
 func main() {
 	initLogger()
 	config.ValidateEnv()
+
 	router, err := setupRouter()
 	if err != nil {
 		slog.Error("An error occurred while starting webserver", "err", err)
 		return
 	}
+	controller.StartStreaming()
 
 	slog.Info("starting server on port :8080")
 	err = http.ListenAndServe(":8080", router)

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -20,7 +22,6 @@ import (
 
 	"github.com/l3montree-dev/traefik-crowdsec-bouncer/config"
 	"github.com/l3montree-dev/traefik-crowdsec-bouncer/model"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -49,6 +50,123 @@ var client = &http.Client{
 		IdleConnTimeout: 30 * time.Second,
 	},
 	Timeout: 5 * time.Second,
+}
+
+type streamResponse struct {
+	New     []model.Decision `json:"new"`
+	Deleted []model.Decision `json:"deleted"`
+}
+
+type blocklist struct {
+	list    map[string]struct{}
+	rwMutex sync.RWMutex
+}
+
+var globalBlocklist blocklist = blocklist{}
+
+// will be nil if unparsable
+func getIpFromDecision(d model.Decision) net.IP {
+	if strings.ToUpper(d.Scope) != "IP" {
+		return nil
+	}
+	// parse the ip
+	// remove a possible range
+	p := strings.Split(d.Value, "/")
+	return net.ParseIP(p[0])
+}
+
+func (b *blocklist) applyStream(stream streamResponse) {
+	adds := 0
+	deletes := 0
+	e := 0
+	// first remove the deleted ones.
+	for _, deleted := range stream.Deleted {
+		ipAddr := getIpFromDecision(deleted)
+		if ipAddr == nil {
+			e++
+			slog.Warn("could not parse ip", "value", deleted.Value, "scope", deleted.Scope)
+			continue
+		}
+		deletes++
+		b.rwMutex.Lock()
+		delete(b.list, ipAddr.String())
+		b.rwMutex.Unlock()
+	}
+
+	for _, new := range stream.New {
+		ipAddr := getIpFromDecision(new)
+		if ipAddr == nil {
+			e++
+			slog.Warn("could not parse ip", "value", new.Value, "scope", new.Scope)
+			continue
+		}
+		adds++
+		b.rwMutex.Lock()
+		b.list[ipAddr.String()] = struct{}{}
+		b.rwMutex.Unlock()
+	}
+
+	slog.Info("applied new stream", "deletedDecisions", deletes, "newDecisions", adds, "errors", e)
+}
+
+func StartStreaming() {
+	go func() {
+		i := 0
+		for {
+			ticker := time.Tick(60 * time.Second)
+			var rawQuery string
+			if i == 0 {
+				rawQuery = "startup=true"
+			} else {
+				rawQuery = "startup=false"
+			}
+			i++
+			// just update the blocklist using the streaming endpoint
+			// Generating crowdsec API request
+			streamURL := url.URL{
+				Scheme:   crowdsecBouncerScheme,
+				Host:     crowdsecBouncerHost,
+				Path:     fmt.Sprintf("%s/%s", crowdsecBouncerRoute, "stream"),
+				RawQuery: rawQuery,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, streamURL.String(), nil)
+			if err != nil {
+				slog.Error("could not start streaming", "err", err)
+				panic("")
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				slog.Error("could not fetch initial streaming state", "err", err)
+				panic("")
+			}
+			// read the body
+			var stream streamResponse
+			bytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				slog.Error("could not read response body", "err", err)
+				panic("")
+			}
+			err = json.Unmarshal(bytes, &stream)
+			if err != nil {
+				slog.Error("could not unmarshal crowdsec response", "err", err)
+				panic("")
+			}
+			resp.Body.Close()
+			cancel()
+			globalBlocklist.applyStream(stream)
+			<-ticker
+		}
+	}()
+}
+
+func isIpAuthorizedBlocklist(clientIP string) (bool, error) {
+	globalBlocklist.rwMutex.RLock()
+	defer globalBlocklist.rwMutex.RUnlock()
+	_, ok := globalBlocklist.list[clientIP]
+	return !ok, nil
 }
 
 /*
@@ -88,7 +206,7 @@ func isIpAuthorized(parentCTX context.Context, clientIP string) (bool, error) {
 	}
 
 	if bytes.Equal(reqBody, []byte("null")) {
-		slog.Info("no decision for IP. Accepting", "ip", clientIP)
+		slog.Debug("no decision for IP. Accepting", "ip", clientIP)
 		return true, nil
 	}
 
@@ -124,7 +242,7 @@ func ForwardAuth(w http.ResponseWriter, r *http.Request) {
 	clientIP := readUserIP(r)
 	slog.Debug("handling forwardAuth request", "ip", clientIP)
 	// Getting and verifying ip using ClientIP function
-	isAuthorized, err := isIpAuthorized(r.Context(), clientIP)
+	isAuthorized, err := isIpAuthorizedBlocklist(clientIP)
 	slog.Debug("handled request", "ip", clientIP, "isAuthorized", isAuthorized, "took", time.Since(start))
 	if err != nil {
 		slog.Warn("an error occured while checking IP", "err", err, "ip", clientIP)
@@ -145,7 +263,7 @@ Route to check bouncer connectivity with Crowdsec agent. Mainly use for Kubernet
 func Healthz(w http.ResponseWriter, r *http.Request) {
 	isHealthy, err := isIpAuthorized(r.Context(), healthCheckIp)
 	if err != nil || !isHealthy {
-		log.Warn().Err(err).Msgf("The health check did not pass. Check error if present and if the IP %q is authorized", healthCheckIp)
+		slog.Error("the health check did not pass. Check error if present and if the IP is authorized", "ip", healthCheckIp)
 		w.WriteHeader(http.StatusForbidden)
 	} else {
 		w.WriteHeader(http.StatusOK)
